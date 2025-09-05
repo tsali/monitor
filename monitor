@@ -6,7 +6,7 @@
 #
 # Monitor IPs from a file; when one becomes reachable:
 #  - announce it
-#  - run `ih <ip>` and print its output
+#  - run `nsplookup <ip>` and print its output
 #  - remove that IP (even if the line had spaces) from the file
 
 set -u
@@ -59,12 +59,12 @@ while true; do
     if ping -c 1 -W 1 "$ip" &>/dev/null; then
       echo "$(date '+%Y-%m-%d %H:%M:%S') - $ip is now REACHABLE"
 
-      # Run IH (if also installed) to print out details about the host that is now reachable
-      if command -v ih >/dev/null 2>&1; then
-        echo "Running: ih $ip"
-        ih "$ip" | sed 's/^/    /'
+      # Run nsplookup (if also installed) to print out details about the host that is now reachable
+      if command -v nsplookup >/dev/null 2>&1; then
+        echo "Running: nsplookup $ip"
+        nsplookup "$ip" | sed 's/^/    /'
       else
-        echo "    Warning: 'ih' not found on PATH, unable to print details about host."
+        echo "    Warning: 'nsplookup' not found on PATH, unable to print details about host."
       fi
 
       # Remove from file (handles lines with extra spaces)
