@@ -1,0 +1,84 @@
+#!/bin/bash
+###########################
+# Tsali/Rai               #
+# monitor v0.1 2025/08/15 #
+###########################
+#
+# Monitor IPs from a file; when one becomes reachable:
+#  - announce it
+#  - run `ih <ip>` and print its output
+#  - remove that IP (even if the line had spaces) from the file
+
+set -u
+
+IP_FILE="${1:-ips.txt}"   # optional: pass a custom file as arg 1
+
+# Trim helper (removes leading/trailing whitespace incl. tabs)
+trim() {
+  local s="$*"
+  # ltrim
+  s="${s#"${s%%[!$' \t\r\n']*}"}"
+  # rtrim
+  s="${s%"${s##*[!$' \t\r\n']}"}"
+  printf '%s' "$s"
+}
+
+# Remove all lines that, after trimming, equal the given target
+remove_ip_from_file() {
+  local target="$1"
+  awk -v target="$target" '
+    {
+      line=$0
+      gsub(/\r/,"",line)                               # drop CR from CRLF files
+      gsub(/^[[:space:]]+|[[:space:]]+$/,"",line)      # trim
+      if (line != target) print $0                     # keep others unchanged
+    }
+  ' "$IP_FILE" > "$IP_FILE.tmp" && mv "$IP_FILE.tmp" "$IP_FILE"
+}
+
+declare -A STATUS
+
+# Load IPs (trim whitespace; skip blanks and commented lines)
+if [[ ! -f "$IP_FILE" ]]; then
+  echo "File not found: $IP_FILE" >&2
+  exit 1
+fi
+
+while IFS= read -r raw || [[ -n "$raw" ]]; do
+  ip="$(trim "$raw")"
+  [[ -z "$ip" || "$ip" =~ ^# ]] && continue
+  STATUS["$ip"]="unknown"
+done < "$IP_FILE"
+
+echo "Monitoring IPs from $IP_FILE ..."
+echo "Press CTRL+C to stop."
+
+while true; do
+  for ip in "${!STATUS[@]}"; do
+    [[ -z "$ip" ]] && continue
+    if ping -c 1 -W 1 "$ip" &>/dev/null; then
+      echo "$(date '+%Y-%m-%d %H:%M:%S') - $ip is now REACHABLE"
+
+      # Run IH (if also installed) to print out details about the host that is now reachable
+      if command -v ih >/dev/null 2>&1; then
+        echo "Running: ih $ip"
+        ih "$ip" | sed 's/^/    /'
+      else
+        echo "    Warning: 'ih' not found on PATH, unable to print details about host."
+      fi
+
+      # Remove from file (handles lines with extra spaces)
+      remove_ip_from_file "$ip"
+
+      # Stop monitoring this IP
+      unset STATUS["$ip"]
+    fi
+  done
+
+  if [[ ${#STATUS[@]} -eq 0 ]]; then
+    echo "All IPs are reachable. Exiting."
+    exit 0
+  fi
+
+  sleep 5
+done
